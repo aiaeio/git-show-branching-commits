@@ -1,0 +1,84 @@
+
+# author: aiaeio (https://github.com/aiaeio)
+# version: 1.0.0
+# license: GPLv2
+
+# check current working directory is in a local git repository
+git rev-parse --git-dir >/dev/null || exit 1
+
+target_commit=
+compared_refs=
+show_table=no
+
+##### handle options and arguments
+
+if [ "$1" = "-h" ]; then
+  cat <<EOT
+${0##*/} [--table] [-r | -a] [<commit>] [<commit>...]
+--
+--table: show result in a scripting-friendly way
+-r: compare with remote branches
+-a: compare with all branchs
+<commit>: a commit to show logs. Default is HEAD.
+<commit>...: commits to compare with. Default is local branches.
+EOT
+  exit 0
+fi
+
+if [ "$1" = "--table" ]; then
+  show_table=yes
+  shift
+fi
+if [ "$1" = "-a" ] || [ "$1" = "-r" ]; then
+  compared_refs=$(git branch "$1" | cut -c 3- | awk '{ print $1; }')
+  shift
+fi
+if [ -n "$1" ]; then
+  target_commit=$(git rev-parse --verify --quiet --symbolic "$1")
+  if [ $? -ne 0 ]; then
+    echo "Error: the first argument seems not a commit."
+    exit 1
+  fi
+  shift
+else
+  target_commit=HEAD
+fi
+if [ -n "$1" ]; then
+  compared_refs=$(git rev-parse --revs-only --symbolic "$@")
+fi
+if [ -z "$compared_refs" ]; then
+  compared_refs=$(git branch | cut -c 3- | awk '{ print $1; }')
+fi
+
+##### find branching commits
+
+branching_table=$( \
+  echo "$compared_refs" \
+  | while read -r compared_ref; do \
+      branching_commit=$(git merge-base "$target_commit" "$compared_ref"); \
+      commit_distance=$(git rev-list --count "$branching_commit".."$target_commit"); \
+      echo "$commit_distance $compared_ref $branching_commit" ; \
+    done \
+  | sort -g \
+)
+
+##### format result
+
+if [ "$show_table" = "yes" ]; then
+  echo "$branching_table"
+  exit 0
+fi
+
+echo "showing logs to $target_commit"
+branching_commit_prev=
+while read -r commit_distance compared_ref branching_commit; do
+  if [ "$branching_commit" != "$branching_commit_prev" ]; then
+    git log -n 1 --oneline "$branching_commit"
+    echo "  -> $compared_ref"
+  else
+    echo "     $compared_ref"
+  fi
+  branching_commit_prev="$branching_commit"
+done <<EOT
+$branching_table
+EOT
