@@ -73,7 +73,7 @@ echo "showing logs to $target_commit"
 branching_commit_prev=
 while read -r commit_distance compared_ref branching_commit; do
   if [ "$branching_commit" != "$branching_commit_prev" ]; then
-    git log -n 1 --oneline "$branching_commit"
+    git --no-pager log -n 1 --oneline "$branching_commit"
     echo "  -> $compared_ref"
   else
     echo "     $compared_ref"
